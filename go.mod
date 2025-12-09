@@ -1,3 +1,3 @@
-module pokedex
+module Github.com/Baehry/pokedex
 
 go 1.25.5
