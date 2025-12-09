@@ -19,7 +19,9 @@ func main() {
         text := cleanInput(scanner.Text())
         command, ok := supportedCommands[text[0]]
         if ok {
-            if command.callback(c) != nil {
+            err := command.callback(c)
+            if err != nil {
+                fmt.Printf("%v\n", err)
                 os.Exit(1)
             }
         } else {

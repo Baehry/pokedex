@@ -6,9 +6,12 @@ import (
 	"io"
 	"net/http"
 	"encoding/json"
+	"time"
+	"github.com/Baehry/pokedex/internal/pokecache"
 )
 
 var supportedCommands map[string]cliCommand
+var cac pokecache.Cache
 
 type cliCommand struct {
 	name string
@@ -46,20 +49,22 @@ func commandHelp(c *config) error {
 }
 
 func commandMap(c *config) error {
-	var res *http.Response
-	var err error
+	url := "https://pokeapi.co/api/v2/location-area/"
 	if c.next != "" {
-		res, err = http.Get(c.next)
-	} else {
-		res, err = http.Get("https://pokeapi.co/api/v2/location-area/")
+		url = c.next
 	}
-	if err != nil {
-		return err
-	}
-	defer res.Body.Close()
-	data, err := io.ReadAll(res.Body)
-	if err != nil {
-		return err
+	data, ok := cac.Get(url)
+	if !ok {
+		res, err := http.Get(url)
+		if err != nil {
+			return err
+		}
+		defer res.Body.Close()
+		data, err = io.ReadAll(res.Body)
+		if err != nil {
+			return err
+		}
+		cac.Add(url, data)
 	}
 	var results locationarea
 	if err := json.Unmarshal(data, &results); err != nil {
@@ -79,14 +84,18 @@ func commandMapb(c *config) error {
 		fmt.Print("you're on the first page\n")
 		return nil
 	}
-	res, err := http.Get(c.previous)
-	if err != nil {
-		return err
-	}
-	defer res.Body.Close()
-	data, err := io.ReadAll(res.Body)
-	if err != nil {
-		return err
+	data, ok := cac.Get(c.previous)
+	if !ok {
+		res, err := http.Get(c.previous)
+		if err != nil {
+			return err
+		}
+		defer res.Body.Close()
+		data, err = io.ReadAll(res.Body)
+		if err != nil {
+			return err
+		}
+		cac.Add(c.previous, data)
 	}
 	var results locationarea
 	if err := json.Unmarshal(data, &results); err != nil {
@@ -123,4 +132,5 @@ func initCommands() {
 			callback: commandMapb,
 		},
 	}
+	cac = pokecache.NewCache(500 * time.Millisecond)
 }
