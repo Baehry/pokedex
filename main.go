@@ -8,13 +8,18 @@ import (
 
 func main() {
     scanner := bufio.NewScanner(os.Stdin)
+    initCommands()
     for {
         fmt.Print("Pokedex > ")
         scanner.Scan()
         text := cleanInput(scanner.Text())
-        if len(text) == 0 {
-            return
+        command, ok := supportedCommands[text[0]]
+        if ok {
+            if command.callback() != nil {
+                os.Exit(1)
+            }
+        } else {
+            fmt.Print("Unknown command\n")
         }
-        fmt.Printf("Your command was: %s\n", text[0])
     }
 }
