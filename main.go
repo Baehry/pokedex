@@ -4,6 +4,8 @@ import (
     "fmt"
     "bufio"
     "os"
+    "github.com/Baehry/pokedex/internal/pokecache"
+    "time"
 )
 
 func main() {
@@ -12,11 +14,20 @@ func main() {
     c := &config{
         previous: "",
         next: "",
+        cac: pokecache.NewCache(500 * time.Millisecond),
+        arguments: make([]string, 0),
     }
     for {
         fmt.Print("Pokedex > ")
         scanner.Scan()
         text := cleanInput(scanner.Text())
+        if len(text) == 0 {
+            fmt.Print("No command entered")
+            continue
+        }
+        if len(text) > 1 {
+            c.arguments = text[1:]
+        }
         command, ok := supportedCommands[text[0]]
         if ok {
             err := command.callback(c)

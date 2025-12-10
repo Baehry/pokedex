@@ -6,12 +6,10 @@ import (
 	"io"
 	"net/http"
 	"encoding/json"
-	"time"
 	"github.com/Baehry/pokedex/internal/pokecache"
 )
 
 var supportedCommands map[string]cliCommand
-var cac pokecache.Cache
 
 type cliCommand struct {
 	name string
@@ -22,16 +20,24 @@ type cliCommand struct {
 type config struct {
 	next string
 	previous string
+	cac pokecache.Cache
+	arguments []string
 }
 
-type locationarea struct {
-	Count int
+type locationareas struct {
 	Next string
 	Previous string
 	Results []struct{
 		Name string
-		Url string
 	}
+}
+
+type locationarea struct {
+	PokemonEncounters []struct{
+		Pokemon struct{
+			Name string `json:"name"`
+		} `json:"pokemon"`
+	} `json:"pokemon_encounters"`
 }
 
 func commandExit(c *config) error {
@@ -53,7 +59,7 @@ func commandMap(c *config) error {
 	if c.next != "" {
 		url = c.next
 	}
-	data, ok := cac.Get(url)
+	data, ok := c.cac.Get(url)
 	if !ok {
 		res, err := http.Get(url)
 		if err != nil {
@@ -64,9 +70,9 @@ func commandMap(c *config) error {
 		if err != nil {
 			return err
 		}
-		cac.Add(url, data)
+		c.cac.Add(url, data)
 	}
-	var results locationarea
+	var results locationareas
 	if err := json.Unmarshal(data, &results); err != nil {
 		return err
 	}
@@ -84,7 +90,7 @@ func commandMapb(c *config) error {
 		fmt.Print("you're on the first page\n")
 		return nil
 	}
-	data, ok := cac.Get(c.previous)
+	data, ok := c.cac.Get(c.previous)
 	if !ok {
 		res, err := http.Get(c.previous)
 		if err != nil {
@@ -95,9 +101,9 @@ func commandMapb(c *config) error {
 		if err != nil {
 			return err
 		}
-		cac.Add(c.previous, data)
+		c.cac.Add(c.previous, data)
 	}
-	var results locationarea
+	var results locationareas
 	if err := json.Unmarshal(data, &results); err != nil {
 		return err
 	}
@@ -105,6 +111,35 @@ func commandMapb(c *config) error {
 	c.next = results.Next
 	for _, place := range results.Results {
 		fmt.Printf("%s\n", place.Name)
+	}
+	return nil
+}
+
+func commandExplore(c *config) error {
+	if len(c.arguments) < 1 {
+		fmt.Print("No Argument Given")
+		return nil
+	}
+	url := "https://pokeapi.co/api/v2/location-area/" + c.arguments[0] + "/"
+	data, ok := c.cac.Get(url)
+	if !ok {
+		res, err := http.Get(url)
+		if err != nil {
+			return err
+		}
+		defer res.Body.Close()
+		data, err = io.ReadAll(res.Body)
+		if err != nil {
+			return err
+		}
+		c.cac.Add(url, data)
+	}
+	var result locationarea
+	if err := json.Unmarshal(data, &result); err != nil {
+		return err
+	}
+	for _, encounter := range result.PokemonEncounters {
+		fmt.Printf("%s\n", encounter.Pokemon.Name)
 	}
 	return nil
 }
@@ -131,6 +166,10 @@ func initCommands() {
 			description: "Displays the previous page of the list displayed by the last map call",
 			callback: commandMapb,
 		},
+		"explore": {
+			name: "explore",
+			description: "Displays a list of wild pokemon available in a specified area",
+			callback: commandExplore,
+		},
 	}
-	cac = pokecache.NewCache(500 * time.Millisecond)
 }
