@@ -8,6 +8,8 @@ import (
 	"encoding/json"
 	"github.com/Baehry/pokedex/internal/pokecache"
 	"math/rand"
+	"strconv"
+	"sort"
 )
 
 var supportedCommands map[string]cliCommand
@@ -23,7 +25,7 @@ type config struct {
 	previous string
 	cac pokecache.Cache
 	arguments []string
-	pokemons map[string]struct{}
+	pokemons map[int]string
 }
 
 func commandExit(c *config) error {
@@ -135,9 +137,18 @@ func commandCatch(c *config) error {
 		fmt.Print("No Argument Given")
 		return nil
 	}
-	if _, ok := c.pokemons[c.arguments[0]]; ok {
-		fmt.Print("Pokemon was already caught\n")
-		return nil
+	num, err := strconv.Atoi(c.arguments[0])
+	if err != nil {
+		if _, ok := c.pokemons[num]; ok {
+			fmt.Print("Pokemon was already caught\n")
+			return nil
+		}
+	}
+	for _, value := range c.pokemons {
+		if value == c.arguments[0] {
+			fmt.Print("Pokemon was already caught\n")
+			return nil
+		}
 	}
 	url := "https://pokeapi.co/api/v2/pokemon-species/" + c.arguments[0] + "/"
 	data, ok := c.cac.Get(url)
@@ -160,10 +171,95 @@ func commandCatch(c *config) error {
 	fmt.Printf("Throwing a Pokeball at %s...\n", result.Name)
 	if rand.Intn(256) <= result.CaptureRate {
 		fmt.Printf("%s was caught!\n", result.Name)
-		c.pokemons[result.Name] = struct{}{}
+		c.pokemons[result.Id] = result.Name
 		return nil
 	}
 	fmt.Printf("%s escaped!\n", result.Name)
+	return nil
+}
+
+func commandInspect(c *config) error {
+	if len(c.arguments) < 1 {
+		fmt.Print("No Argument Given")
+		return nil
+	}
+	num, err := strconv.Atoi(c.arguments[0])
+	var ok bool
+	if err != nil {
+		_, ok = c.pokemons[num];
+	}
+	for _, value := range c.pokemons {
+		if value == c.arguments[0] {
+			ok = true
+			break
+		}
+	}
+	if !ok {
+		fmt.Print("You have not caught that Pokemon\n")
+		return nil
+	}
+	url := "https://pokeapi.co/api/v2/pokemon-species/" + c.arguments[0] + "/"
+	data, ok := c.cac.Get(url)
+	if !ok {
+		res, err := http.Get(url)
+		if err != nil {
+			return err
+		}
+		defer res.Body.Close()
+		data, err = io.ReadAll(res.Body)
+		if err != nil {
+			return err
+		}
+		c.cac.Add(url, data)
+	}
+	var spec PokemonSpecies
+	if err := json.Unmarshal(data, &spec); err != nil {
+		return err
+	}
+	url = "https://pokeapi.co/api/v2/pokemon/" + c.arguments[0] + "/"
+	data, ok = c.cac.Get(url)
+	if !ok {
+		res, err := http.Get(url)
+		if err != nil {
+			return err
+		}
+		defer res.Body.Close()
+		data, err = io.ReadAll(res.Body)
+		if err != nil {
+			return err
+		}
+		c.cac.Add(url, data)
+	}
+	var pok Pokemon
+	if err := json.Unmarshal(data, &pok); err != nil {
+		return err
+	}
+	fmt.Printf("No. %d: %s\n",spec.Id, spec.Name)
+	fmt.Printf("%s\n", spec.Genera[7].Genus)
+	fmt.Printf("Type: %s", pok.Types[0].Type.Name)
+	if len(pok.Types) > 1 {
+		fmt.Printf(" and %s", pok.Types[1].Type.Name)
+	}
+	fmt.Printf("\nHeight: %.1fm\nWeight: %.1fkg\n", float64(pok.Height) / 10.0, float64(pok.Weight) / 10.0)
+	for _, ent := range spec.FlavorTextEntries {
+		if ent.Language.Name != "en" {
+			continue
+		}
+		fmt.Println(ent.FlavorText)
+		break
+	}
+	return nil
+}
+
+func commandPokedex (c *config) error {
+	keys := make([]int, 0, len(c.pokemons))
+	for k := range c.pokemons {
+		keys = append(keys, k)
+	}
+	sort.Ints(keys)
+	for _, k := range keys {
+		fmt.Printf("%d. %s\n", k, c.pokemons[k])
+	}
 	return nil
 }
 
@@ -198,6 +294,16 @@ func initCommands() {
 			name: "catch",
 			description: "Attempts to catch a wild Pokemon",
 			callback: commandCatch,
+		},
+		"inspect": {
+			name: "inspect",
+			description: "Look at the dex entry of a Pokemon you caught",
+			callback: commandInspect,
+		},
+		"pokedex": {
+			name: "pokedex",
+			description: "Lists the pokemon registered in the pokedex",
+			callback: commandPokedex,
 		},
 	}
 }

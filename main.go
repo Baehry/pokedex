@@ -16,7 +16,7 @@ func main() {
         next: "",
         cac: pokecache.NewCache(500 * time.Millisecond),
         arguments: make([]string, 0),
-        pokemons: make(map[string]struct{}),
+        pokemons: make(map[int]string),
     }
     for {
         fmt.Print("Pokedex > ")
